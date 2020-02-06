@@ -13,7 +13,7 @@ The inserted ESP32 catches the event and send a signal through WiFi + MQTT.
 This MQTT event can then be handled by  my favorite automation software (home assistant).
 
 .LED projector with motion sensor
-image:assets/01.jpg[width=600]
+image:assets/animation.gif[width=600]
 
 Required hardware:
 
@@ -47,7 +47,7 @@ source code: link:warlux.ino[warlux.ino]
     - *+*: orange
     - *ground*: yellow
     - *signal*: blue
- . put every thing back in place 
+ . put every thing back in place
 
 .fig. 2: back plate
 image:assets/02.jpg[width=600]
