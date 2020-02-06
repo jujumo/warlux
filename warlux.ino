@@ -5,7 +5,9 @@
 
 //RTC_DATA_ATTR int bootCount = 0;
 
-#define LED 2
+const int        ID_LED = 2;
+const gpio_num_t ID_SIG = GPIO_NUM_33;
+
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define BUTTON_PIN_BITMASK 0x200000000 // 2^33 in hex
 
@@ -82,31 +84,25 @@ void setup_mqtt()
 
 }
 
-
-void blink()
-{
-    for (int i=0; i<10; ++i) {
-      delay(200);
-      digitalWrite(LED, LOW);
-      delay(300);
-      digitalWrite(LED, HIGH);
-    }
+void send_mqtt(const String& mqtt_payload) {
+  const String mqtt_topic = "warlux/motion/" + mqtt_device_name;
+  //const String mqtt_payload = String(wakeup_code);
+  Serial.println("MQTT: publish\t" + mqtt_topic + " : " + mqtt_payload);
+  mqtt_client.publish(mqtt_topic.c_str(), mqtt_payload.c_str());
 }
-
 
 void setup()
 {
   // Setup hardware
-  pinMode(LED,OUTPUT);
-  digitalWrite(LED, HIGH);
-  //Configure GPIO33 as ext0 wake up source for HIGH logic level
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
-  gpio_pullup_en(GPIO_NUM_33);
+  pinMode(ID_LED,OUTPUT);
+  pinMode(ID_SIG, INPUT);
   //esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
   // We set our ESP32 to wake up every 5 seconds
+  gpio_pullup_en(ID_SIG);
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP_S * uS_TO_S_FACTOR);
   // setup print
   Serial.begin(115200);
+  digitalWrite(ID_LED, HIGH);
   delay(1000); 
 
   //Print the wakeup reason for ESP32
@@ -118,25 +114,31 @@ void setup()
   setup_wifi();
   setup_mqtt();
   
-  // publish status
-  const String mqtt_topic = "warlux/" + mqtt_device_name + "/motion";
-  const String mqtt_payload = String(wakeup_code);
-  Serial.println("MQTT: publish\t" + mqtt_topic + " : " + mqtt_payload);
-  mqtt_client.publish(mqtt_topic.c_str(), mqtt_payload.c_str());
-
-  // avoid multiple trigger in a row
-  if (wakeup_code == ESP_SLEEP_WAKEUP_EXT0) {
-    Serial.print("wait a bit ");
-    blink();
-    delay(50000);
-    blink();
+  if (wakeup_code != ESP_SLEEP_WAKEUP_EXT0) {
+    send_mqtt("heartbit");
+    
+  } else {
+    // MOTION DETECTED
+    send_mqtt("detection");
+    // wait for the motion sensor to switch off
+    while (LOW == digitalRead(ID_SIG)) {
+      digitalWrite(ID_LED, LOW);
+      delay(500);
+      Serial.print(".");
+      digitalWrite(ID_LED, HIGH);
+      delay(500);
+    }
+    Serial.println("DONE");
+    send_mqtt("idle");
   }
   
-  //Go to sleep now
-  digitalWrite(LED, LOW);
-  Serial.println("ESP: going to sleep now.");
+  // make sure GPIO33 as ext0 wake up source for HIGH logic level
+  esp_sleep_enable_ext0_wakeup(ID_SIG, LOW);
+  digitalWrite(ID_LED, LOW);
+  Serial.println("ESP: go to sleep.");
+  // Go to sleep now
   esp_deep_sleep_start();
 }
 
 
-void loop(){}
+void loop() {}
