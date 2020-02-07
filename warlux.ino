@@ -23,12 +23,12 @@ String get_wakeup_string(esp_sleep_wakeup_cause_t wakeup_reason_code)
 {
   switch(wakeup_reason_code)
   {
-    case ESP_SLEEP_WAKEUP_EXT0    : return "external signal using RTC_IO"; 
-    case ESP_SLEEP_WAKEUP_EXT1    : return "external signal using RTC_CNTL"; 
-    case ESP_SLEEP_WAKEUP_TIMER   : return "timer"; 
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: return "ouchpad"; 
+    case ESP_SLEEP_WAKEUP_EXT0    : return "trigger"; 
+    case ESP_SLEEP_WAKEUP_EXT1    : return "trigger"; 
+    case ESP_SLEEP_WAKEUP_TIMER   : return "idle"; 
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: return "touchpad"; 
     case ESP_SLEEP_WAKEUP_ULP     : return "ULP program";
-    default                       : return "not sleeping: " + String(wakeup_reason_code);
+    default                       : return "booting";
   }
 }
 
@@ -84,9 +84,7 @@ void setup_mqtt()
 
 }
 
-void send_mqtt(const String& mqtt_payload) {
-  const String mqtt_topic = "warlux/motion/" + mqtt_device_name;
-  //const String mqtt_payload = String(wakeup_code);
+void send_mqtt(const String& mqtt_topic, const String& mqtt_payload) {
   Serial.println("MQTT: publish\t" + mqtt_topic + " : " + mqtt_payload);
   mqtt_client.publish(mqtt_topic.c_str(), mqtt_payload.c_str());
 }
@@ -107,7 +105,7 @@ void setup()
 
   //Print the wakeup reason for ESP32
   esp_sleep_wakeup_cause_t wakeup_code = esp_sleep_get_wakeup_cause();
-  String wakeup_string = get_wakeup_string(wakeup_code);
+  const String wakeup_string = get_wakeup_string(wakeup_code);
   Serial.println("ESP: awaken because : " + wakeup_string);
 
   // set up wifi + mqtt 
@@ -115,11 +113,11 @@ void setup()
   setup_mqtt();
   
   if (wakeup_code != ESP_SLEEP_WAKEUP_EXT0) {
-    send_mqtt("heartbit");
+    send_mqtt("status/warlux/" + mqtt_device_name , wakeup_string);
     
   } else {
     // MOTION DETECTED
-    send_mqtt("detection");
+    send_mqtt("motion/warlux/" + mqtt_device_name, "on");
     // wait for the motion sensor to switch off
     while (LOW == digitalRead(ID_SIG)) {
       digitalWrite(ID_LED, LOW);
@@ -129,7 +127,7 @@ void setup()
       delay(500);
     }
     Serial.println("DONE");
-    send_mqtt("idle");
+    send_mqtt("motion/warlux/" + mqtt_device_name, "off");
   }
   
   // make sure GPIO33 as ext0 wake up source for HIGH logic level
