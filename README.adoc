@@ -27,6 +27,22 @@ Required software:
 - arduino IDE
 - ESP32 library for arduino IDE
 
+== MQTT
+
+The device sends the following MQTT events:
+
+[cols="2m,1m,3"]
+|===
+| topic                   | payload | description
+
+| status/warlux/DEVICE_ID | booting | Just boot up.
+| status/warlux/DEVICE_ID | idle    | Sending Hi every 12h.
+
+| motion/warlux/DEVICE_ID | on      | Motion detected.
+| motion/warlux/DEVICE_ID | off     | End of motion detection event.
+
+|===
+
 == Source code
 
 source code: link:warlux.ino[warlux.ino]
