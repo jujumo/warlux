@@ -3,16 +3,10 @@
 #include <Wire.h>
 #include "config.h"
 
-//RTC_DATA_ATTR int bootCount = 0;
-
 const int        ID_LED = 2;
-const gpio_num_t ID_SIG = GPIO_NUM_33;
 
-#define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
-#define BUTTON_PIN_BITMASK 0x200000000 // 2^33 in hex
-
-//                          12h   m    s
-const int TIME_TO_SLEEP_S = 12 * 60 * 60;        /* Time ESP32 will go to sleep (in seconds) */
+//                           1 min
+const int TIME_TO_SLEEP_uS = 60 * 1.e06; // Time ESP32 will go to pause (1 minute)
 
 WiFiClient wifi_client;
 PubSubClient mqtt_client(wifi_client);
@@ -23,12 +17,13 @@ String get_wakeup_string(esp_sleep_wakeup_cause_t wakeup_reason_code)
 {
   switch(wakeup_reason_code)
   {
+    case ESP_SLEEP_WAKEUP_UNDEFINED : return "reset was not caused by exit from deep sleep";
     case ESP_SLEEP_WAKEUP_EXT0    : return "trigger"; 
     case ESP_SLEEP_WAKEUP_EXT1    : return "trigger"; 
-    case ESP_SLEEP_WAKEUP_TIMER   : return "idle"; 
+    case ESP_SLEEP_WAKEUP_TIMER   : return "timer"; 
     case ESP_SLEEP_WAKEUP_TOUCHPAD: return "touchpad"; 
     case ESP_SLEEP_WAKEUP_ULP     : return "ULP program";
-    default                       : return "booting";
+    default                       : return "undefined";
   }
 }
 
@@ -59,6 +54,7 @@ void setup_wifi() {
 
   WiFi.begin(ssid, password);
 
+  // todo: give up after an number of attempt
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
@@ -71,17 +67,15 @@ void setup_wifi() {
 
 void setup_mqtt() 
 {
-  mqtt_client.setServer(mqtt_server, mqtt_port);
-  //mqtt_client.setCallback(callback);
-  
+  mqtt_client.setServer(mqtt_server, mqtt_port); 
   Serial.print("MQTT: connecting to " + String(mqtt_server) + " ");
   mqtt_client.connect(mqtt_device_name.c_str(), mqtt_user, mqtt_password);
+  // todo: give up after an number of attempt
   while (!mqtt_client.connected()) {
     Serial.print(".");
     delay(500);
   }
   Serial.println(" DONE");
-
 }
 
 void send_mqtt(const String& mqtt_topic, const String& mqtt_payload) {
@@ -93,11 +87,8 @@ void setup()
 {
   // Setup hardware
   pinMode(ID_LED,OUTPUT);
-  pinMode(ID_SIG, INPUT);
-  //esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
   // We set our ESP32 to wake up every 5 seconds
-  gpio_pullup_en(ID_SIG);
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP_S * uS_TO_S_FACTOR);
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP_uS);
   // setup print
   Serial.begin(115200);
   digitalWrite(ID_LED, HIGH);
@@ -112,26 +103,12 @@ void setup()
   setup_wifi();
   setup_mqtt();
   
-  if (wakeup_code != ESP_SLEEP_WAKEUP_EXT0) {
-    send_mqtt("status/warlux/" + mqtt_device_name , wakeup_string);
-    
-  } else {
-    // MOTION DETECTED
-    send_mqtt("motion/warlux/" + mqtt_device_name, "on");
-    // wait for the motion sensor to switch off
-    while (LOW == digitalRead(ID_SIG)) {
-      digitalWrite(ID_LED, LOW);
-      delay(500);
-      Serial.print(".");
-      digitalWrite(ID_LED, HIGH);
-      delay(500);
-    }
-    Serial.println("DONE");
-    send_mqtt("motion/warlux/" + mqtt_device_name, "off");
+  send_mqtt("motion/warlux/" + mqtt_device_name, "on");
+  if (wakeup_code == ESP_SLEEP_WAKEUP_TIMER) {
+    // wake up y timer. Should not happen ...
+    send_mqtt("status/warlux/" + mqtt_device_name , "on"); 
   }
-  
-  // make sure GPIO33 as ext0 wake up source for HIGH logic level
-  esp_sleep_enable_ext0_wakeup(ID_SIG, LOW);
+
   digitalWrite(ID_LED, LOW);
   Serial.println("ESP: go to sleep.");
   // Go to sleep now
